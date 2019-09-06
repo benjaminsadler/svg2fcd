@@ -1,0 +1,109 @@
+#!/bin/bash
+#
+# svg2fcd 1.0
+# 
+# Copyright (C) Benjamin Sadler <benjamin.sadler@gmail.com> 2019-09-03.
+#
+# 'svg2fcd' is a script that converts x,y cartesian point pairs from an svg file
+# to a custom "fcode" format.
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public Licence as published by
+# the Free Software Foundation, either version 3 of the licence or,
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for details.
+# 
+# You should've received a copy of the GNU General Public License
+# with this program. If not, see <http://www.gnu.org/licences/>,
+# or write to the Free Software Foundation, Inc.,
+# 59 Temple Place, Suite 330 Boston MA 02111-1307 USA.
+
+echo "Converting coordinate data from" $1 "to" $2"; reading data from "$1" ..."
+
+i=0
+while IFS= read -ra line
+do
+	let i++
+        array+=("$line")
+done < "$1"
+
+echo "..." $i "lines read from svg file."
+nlines=$i
+
+obj_num=0
+xyp_num=0
+nb_flag=0
+x_old=0.0
+y_old=0.0
+z_old=0.0
+z0=0.0
+z_offset=1.0
+
+i=0
+while [ $i -lt $nlines ]; do
+
+	IFS=" ," read -r -a intcd <<< ${array[$i]}
+	echo -ne " * working on line" $i "of" $nlines" *  \033[0K\r" 
+
+	if [ "${intcd[0]}" == "<polyline" ]; then
+		nb_flag=1
+		x_old=0.0
+		y_old=0.0
+		z_old=0.0
+		let obj_num++
+	
+	elif [ $nb_flag -eq 1 ] || [ $nb_flag -eq -1 ]; then 
+		
+		nword=${#intcd[*]}
+		ncp=$(((nword-1)/2))
+
+		j=0
+		while [ $j -lt $ncp ]; do
+
+			x0=${intcd[$(($j*2))]}
+			y0=${intcd[$(($j*2+1))]}
+
+			printf "fcode " >> $2	
+			printf "X%+08.3f " $x0 >> $2
+			printf "Y%+08.3f " $y0 >> $2	
+			
+			if [ $nb_flag -eq 1 ]; then
+				z0=$z_offset
+				nb_flag=-1
+			else
+				z0=0.0 
+			fi
+
+			printf "Z%+08.3f " $z0 >> $2
+
+			dx0=`echo $x0 - $x_old | bc`
+			dy0=`echo $y0 - $y_old | bc`
+			dz0=`echo $z0 - $z_old | bc`
+	
+			printf "dX%+08.3f " $dx0 >> $2
+			printf "dY%+08.3f " $dy0 >> $2
+			printf "dZ%+08.3f " $dz0 >> $2
+	
+			x_old=$x0
+			y_old=$y0
+			z_old=$z0
+
+			printf "\n" >> $2
+
+			let xyp_num++
+			let j++
+
+		done
+
+	fi
+	let i++
+
+done
+
+echo ""
+echo "Conversion finished!"
+echo $obj_num "geometric objects from SVG file imported into" $xyp_num "(x,y,z) coordinates in FCODE." 
